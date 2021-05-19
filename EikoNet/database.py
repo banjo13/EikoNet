@@ -71,6 +71,14 @@ def Database(PATH,VelocityFunction,create=False,Numsamples=5000,randomDist=False
             xmin[0],xmin[1] = proj(xmin[0],xmin[1])
             xmax[0],xmax[1] = proj(xmax[0],xmax[1])
 
+        if VelocityFunction == 'PNSN_CVM':
+            Xp = np.load(PATH+'/Xp.npy')
+            Yp = np.load(PATH+'/Yp.npy')
+
+        else:
+            Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
+            Yp   = VelocityFunction.eval(Xp)
+
         Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
         Yp   = VelocityFunction.eval(Xp)
 
@@ -236,6 +244,130 @@ class Graded1DVelocity:
 
 # BNJ 4-29-2021 TODO: WRITE A CLASS TO READ THE PNSN_CVM
 # THE FORMAT WILL BE: a .csvfile, with utme utmn z vp vs
+class PNSN_CVM:
+    def __init__(self,xmin=None,xmax=None,projection=None,phase='VP'):
+        self.file         = file
+        self.xmin         = xmin
+        self.xmax         = xmax
+        self.projection   = projection
+        self.phase        = phase
+
+
+
+    def eval(self,Xp):
+        Yp = np.load(Yp)
+
+
+#         if self.phase == 'VP':
+#             Yp[:,1] = VPVS['VP']
+#         if self.phase == 'VS':
+#             Yp[:,1] = VPVS['VS']
+
+#         # Removing unknown velocities
+        Yp[Yp[:,1]==-99999.0000] = np.nan
+        Yp[Yp[:,1]==0.0] = np.nan
+
+#         # Velocity in km/s
+#         Yp = Yp/1000
+
+        return Yp
+
+
+    def Plotting(self,TT_model,Xp,Yp,phase='VP',Xsrc=None,indexVal=None,save_path=None):
+        '''
+        '''
+        if type(Xsrc) == type(None):
+            Xsrc = (np.array(self.xmax) - np.array(self.xmin))/2 + np.array(self.xmin)
+        if type(indexVal) == type(None):
+            indexVal = [0,((np.array(self.xmax) - np.array(self.xmin))/2 + np.array(self.xmin))[0],0.03]
+
+
+        Xp = np.load(Xp)
+        Yp = np.load(Yp)
+
+        # Projecting sample points into LatLong
+        proj = Proj(self.projection)
+        Xp[:,0],Xp[:,1] = proj(Xp[:,0],Xp[:,1],inverse=True)
+        Xp[:,3],Xp[:,4] = proj(Xp[:,3],Xp[:,4],inverse=True)
+
+
+
+        dms = [0,1,2]
+        dms.remove(indexVal[0])
+
+        # === Gridding the correct data
+        if indexVal[0] == 0:
+            indx      = np.where(abs(Xp[:,3] - indexVal[1])<indexVal[2])[0]
+        if indexVal[0] == 1:
+            indx      = np.where(abs(Xp[:,4] - indexVal[1])<indexVal[2])[0]
+        if indexVal[0] == 2:
+            indx      = np.where(abs(Xp[:,5] - indexVal[1])<indexVal[2])[0]
+
+        # Determining the Travel-time and velocity at points
+        Xp_i = Xp[indx,:]
+        Points       = np.zeros((len(indx),6))
+        Points[:,:3] = Xsrc
+        Points[:,3]  = Xp_i[:,3]
+        Points[:,4]  = Xp_i[:,4]
+        Points[:,5]  = Xp_i[:,5]
+        Points       = torch.Tensor(Points)
+
+        ObsVV        = Yp[indx,1]
+
+        TT = TT_model.TravelTimes(Points).detach().cpu().numpy()
+        VV = TT_model.Velocity(Points).detach().cpu().numpy()
+
+        plt.clf();plt.close('all')
+        fig = plt.figure(figsize=(20,8))
+        dim_labs = ['Long','Lat','Z']
+        plt.suptitle('Xsrc = [{},{},{}],\n Slice in {} direction taken at {}={} +/- {}'.format(Xsrc[0],Xsrc[1],Xsrc[2],dim_labs[indexVal[0]],dim_labs[indexVal[0]],indexVal[1],indexVal[2]))
+
+        ax0  = fig.add_subplot(2,2,1)
+        ax0.set_title('Observed Velocity (km/s)')
+        quad0 = ax0.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,ObsVV)
+        cb0=plt.colorbar(quad0,ax=ax0);cb0.set_label('CVM-H Vel (km/s)')
+        ax0.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax0.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax0.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax0.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        ax  = fig.add_subplot(2,2,2)
+        ax.set_title('Predicted Travel-Time (s)')
+        quad = ax.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,TT,cmap='hsv')
+        cb = plt.colorbar(quad,ax=ax);cb.set_label('Predicted TT (s)')
+        ax.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        ax1  = fig.add_subplot(2,2,3)
+        ax1.set_title('Predicted Velocity Model (km/s)')
+        quad1 = ax1.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,VV)
+        cb1=plt.colorbar(quad1,ax=ax1);cb1.set_label('Predicted Vel (km/s)')
+        if (indexVal[0] == 0) or (indexVal[0] ==1):
+            ax1.invert_yaxis()
+        ax1.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax1.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax1.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax1.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        ax2  = fig.add_subplot(2,2,4)
+        ax2.set_title('Velocity Model % Difference')
+        quad2 = ax2.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,((VV-ObsVV)/ObsVV)*100,cmap='bwr',vmin=-25,vmax=25)
+        if (indexVal[0] == 0) or (indexVal[0] ==1):
+            ax2.invert_yaxis()
+        cb2=plt.colorbar(quad2,ax=ax2);cb2.set_label('Percentage Diff (%)')
+        ax2.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax2.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax2.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax2.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        # Input comparison of points
+        if type(save_path) == str:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+
 
 class SCEC_CVMH:
     def __init__(self,xmin=None,xmax=None,projection=None,phase='VP',cvm_host=None):
@@ -270,6 +402,8 @@ class SCEC_CVMH:
                             names=['Long','Lat','Z','UTM_X','UTM_Y','UTM_elv_X','UTM_elv_Y',
                                    'topo','mtop','base','moho','flg','cellX','cellY','cellZ',
                                    'tag','VP','VS','RHO'],sep=r'\s+')
+
+        VPVS = pd.read_csv('cascadia_vpvs')
 
         if self.phase == 'VP':
             Yp[:,1] = VPVS['VP']
