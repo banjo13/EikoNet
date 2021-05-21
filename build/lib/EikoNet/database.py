@@ -59,6 +59,37 @@ def _randPoints(numsamples=10000,randomDist=False,Xmin=[0,0,0],Xmax=[2,2,2]):
         X  = (np.random.rand(numsamples,6)*(Xmax-Xmin)[None,None,:] + Xmin[None,None,:])[0,:,:]
     return X
 
+# def make_X(file=None,numsamples=10000,randomDist=False,Xmin=[0,0,0],Xmax=[2,2,2]):
+#     df = pd.read_csv(file)
+#     df_samp = df.sample(n=numsamples)
+#     X = _randPoints(numsamples=numsamples,randomDist=True,Xmin=xmin,Xmax=xmax)
+#     rX = []
+#     rY = []
+#     rZ = []
+#     for i in range(len(X)):
+#         x = X[i]
+#         rx = x[0]
+#         ry = x[1]
+#         rz = x[2]*1000
+#         rX.append(rx)
+#         rY.append(ry)
+#         rZ.append(rz)
+#
+#     df_samp['rlat'] = rX
+#     df_samp['rlon'] = rY
+#     df_samp['rz'] = rZ
+#     dfX = df_samp[['rlat','rlon','rz','lat','lon','z']]
+#
+#     X = dfXp.to_numpy()
+#
+#     dfY = df_samp['vp']
+#
+#     Y = dfYp.to_numpy()
+#
+#     # xxx = np.save(path+'Xp.npy',Xp)
+#     # yyy = np.save(path+'Yp.npy',Yp)
+#     return X,Y
+
 
 def Database(PATH,VelocityFunction,create=False,Numsamples=5000,randomDist=False,SurfaceRecievers=False):
     if create == True:
@@ -70,6 +101,14 @@ def Database(PATH,VelocityFunction,create=False,Numsamples=5000,randomDist=False
             proj = Proj(VelocityFunction.projection)
             xmin[0],xmin[1] = proj(xmin[0],xmin[1])
             xmax[0],xmax[1] = proj(xmax[0],xmax[1])
+
+            # if VelocityFunction == 'PNSN_CVM':
+            #     Xp = make_X(file=PATH,numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
+            #     Yp = VelocityFunction.eval(Xp)
+            #
+            # else:
+            #     Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
+            #     Yp   = VelocityFunction.eval(Xp)
 
         Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
         Yp   = VelocityFunction.eval(Xp)
@@ -236,6 +275,175 @@ class Graded1DVelocity:
 
 # BNJ 4-29-2021 TODO: WRITE A CLASS TO READ THE PNSN_CVM
 # THE FORMAT WILL BE: a .csvfile, with utme utmn z vp vs
+class PNSN_CVM:
+    def __init__(self,xmin=None,xmax=None,projection=None,phase='VP',path=None,file=None):
+        self.file         = file
+        self.path         = path
+        self.xmin         = xmin
+        self.xmax         = xmax
+        self.projection   = projection
+        self.phase        = phase
+
+    def eval(self,Xp):
+        df = pd.read_csv(self.path+"/"+self.file)
+        df['z'] = df['z']/1000
+        velocity = []
+        # Yp = np.zeros((Xp.shape[0],2))
+        Yp = []
+        for i in range(len(Xp)):
+            t = Xp[i]
+
+            # print("Xp [i]: ",t)
+            x_dep = t[5]
+            sub = df.iloc[(df['z']-x_dep).abs().argsort()[:2]]
+            # print('subset_z:',sub)
+            sub_z = np.unique(sub['z'].values)
+            # print("sub_z",sub_z)
+            zdf = df.iloc[(df['z'].values) == sub_z]
+            # print('zdf: ',zdf)
+
+            # proj = Proj(self.projection)
+            # t1 = proj(t[3],t[4])
+            # print("t1: ",t1)
+
+            x_utme = t[3]
+            x_utmn = t[4]
+            # print("Xp utme :",x_utme)
+            # print("Xp utmn :", x_utmn)
+
+            sub = df.iloc[(df['utmn']-x_utmn).abs().argsort()[:2]]
+            # print('subset_n:',sub)
+            sub_n = np.unique(sub['utmn'].values)
+            # print("sub_n",sub_n)
+
+            sub = df.iloc[(df['utme']-x_utme).abs().argsort()[:2]]
+            # print('subset_e:',sub)
+            sub_e = np.unique(sub['utme'].values)
+            # print("sub_e",sub_e)
+
+            row = zdf.loc[(zdf['utme'].values == sub_e) & (zdf['utmn'].values == sub_n)]
+            if self.phase == 'VP':
+                vp = row['vp'].values[0]
+                velocity.append(vp)
+            if self.phase == 'VS':
+                vp = row['vs'].values[0]
+                velocity.append(vp)
+            vp = row['vp'].values[0]
+            Yp.append([0,vp])
+        # Yp[:,1] = velocity
+        Yp = np.asarray(Yp)
+
+
+#         if self.phase == 'VP':
+#             Yp[:,1] = VPVS['VP']
+#         if self.phase == 'VS':
+#             Yp[:,1] = VPVS['VS']
+
+#         # Removing unknown velocities
+        # Yp[Yp[:,1]==-99999.0000] = np.nan
+        # Yp[Yp[:,1]==0.0] = np.nan
+
+#         # Velocity in km/s
+        Yp = Yp/1000
+
+        return Yp
+
+
+    def Plotting(self,TT_model,Xp,Yp,phase='VP',Xsrc=None,indexVal=None,save_path=None):
+        '''
+        '''
+        if type(Xsrc) == type(None):
+            Xsrc = (np.array(self.xmax) - np.array(self.xmin))/2 + np.array(self.xmin)
+        if type(indexVal) == type(None):
+            indexVal = [0,((np.array(self.xmax) - np.array(self.xmin))/2 + np.array(self.xmin))[0],0.03]
+
+
+        Xp = np.load(Xp)
+        Yp = np.load(Yp)
+
+        # Projecting sample points into LatLong
+        proj = Proj(self.projection)
+        Xp[:,0],Xp[:,1] = proj(Xp[:,0],Xp[:,1],inverse=True)
+        Xp[:,3],Xp[:,4] = proj(Xp[:,3],Xp[:,4],inverse=True)
+
+
+
+        dms = [0,1,2]
+        dms.remove(indexVal[0])
+
+        # === Gridding the correct data
+        if indexVal[0] == 0:
+            indx      = np.where(abs(Xp[:,3] - indexVal[1])<indexVal[2])[0]
+        if indexVal[0] == 1:
+            indx      = np.where(abs(Xp[:,4] - indexVal[1])<indexVal[2])[0]
+        if indexVal[0] == 2:
+            indx      = np.where(abs(Xp[:,5] - indexVal[1])<indexVal[2])[0]
+
+        # Determining the Travel-time and velocity at points
+        Xp_i = Xp[indx,:]
+        Points       = np.zeros((len(indx),6))
+        Points[:,:3] = Xsrc
+        Points[:,3]  = Xp_i[:,3]
+        Points[:,4]  = Xp_i[:,4]
+        Points[:,5]  = Xp_i[:,5]
+        Points       = torch.Tensor(Points)
+
+        ObsVV        = Yp[indx,1]
+
+        TT = TT_model.TravelTimes(Points).detach().cpu().numpy()
+        VV = TT_model.Velocity(Points).detach().cpu().numpy()
+
+        plt.clf();plt.close('all')
+        fig = plt.figure(figsize=(20,8))
+        dim_labs = ['Long','Lat','Z']
+        plt.suptitle('Xsrc = [{},{},{}],\n Slice in {} direction taken at {}={} +/- {}'.format(Xsrc[0],Xsrc[1],Xsrc[2],dim_labs[indexVal[0]],dim_labs[indexVal[0]],indexVal[1],indexVal[2]))
+
+        ax0  = fig.add_subplot(2,2,1)
+        ax0.set_title('Observed Velocity (km/s)')
+        quad0 = ax0.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,ObsVV)
+        cb0=plt.colorbar(quad0,ax=ax0);cb0.set_label('CVM-H Vel (km/s)')
+        ax0.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax0.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax0.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax0.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        ax  = fig.add_subplot(2,2,2)
+        ax.set_title('Predicted Travel-Time (s)')
+        quad = ax.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,TT,cmap='hsv')
+        cb = plt.colorbar(quad,ax=ax);cb.set_label('Predicted TT (s)')
+        ax.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        ax1  = fig.add_subplot(2,2,3)
+        ax1.set_title('Predicted Velocity Model (km/s)')
+        quad1 = ax1.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,VV)
+        cb1=plt.colorbar(quad1,ax=ax1);cb1.set_label('Predicted Vel (km/s)')
+        if (indexVal[0] == 0) or (indexVal[0] ==1):
+            ax1.invert_yaxis()
+        ax1.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax1.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax1.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax1.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        ax2  = fig.add_subplot(2,2,4)
+        ax2.set_title('Velocity Model % Difference')
+        quad2 = ax2.scatter(Xp_i[:,dms[0]+3],Xp_i[:,dms[1]+3],5,((VV-ObsVV)/ObsVV)*100,cmap='bwr',vmin=-25,vmax=25)
+        if (indexVal[0] == 0) or (indexVal[0] ==1):
+            ax2.invert_yaxis()
+        cb2=plt.colorbar(quad2,ax=ax2);cb2.set_label('Percentage Diff (%)')
+        ax2.set_xlabel('{}'.format(dim_labs[dms[0]]))
+        ax2.set_ylabel('{}'.format(dim_labs[dms[1]]))
+        ax2.set_xlim([self.xmin[dms[0]],self.xmax[dms[0]]])
+        ax2.set_ylim([self.xmax[dms[1]],self.xmin[dms[1]]])
+
+        # Input comparison of points
+        if type(save_path) == str:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+
 
 class SCEC_CVMH:
     def __init__(self,xmin=None,xmax=None,projection=None,phase='VP',cvm_host=None):

@@ -57,10 +57,10 @@ class NN(torch.nn.Module):
         return tau
 
 def EikonalLoss(Yobs,Xp,tau,device):
-        dtau  = torch.autograd.grad(outputs=tau, inputs=Xp, grad_outputs=torch.ones(tau.size()).to(device), 
+        dtau  = torch.autograd.grad(outputs=tau, inputs=Xp, grad_outputs=torch.ones(tau.size()).to(device),
                             only_inputs=True,create_graph=True,retain_graph=True)[0]
 
-        T0    = torch.sqrt(((Xp[:,3]-Xp[:,0])**2 + (Xp[:,4]-Xp[:,1])**2 + (Xp[:,5]-Xp[:,2])**2))  
+        T0    = torch.sqrt(((Xp[:,3]-Xp[:,0])**2 + (Xp[:,4]-Xp[:,1])**2 + (Xp[:,5]-Xp[:,2])**2))
         T1    = (T0**2)*(dtau[:,3]**2 + dtau[:,4]**2 + dtau[:,5]**2)
         T2    = 2*tau[:,0]*(dtau[:,3]*(Xp[:,3]-Xp[:,0]) + dtau[:,4]*(Xp[:,4]-Xp[:,1]) + dtau[:,5]*(Xp[:,5]-Xp[:,2]))
         T3    = tau[:,0]**2
@@ -73,7 +73,7 @@ def EikonalLoss(Yobs,Xp,tau,device):
 
 class Model():
     def __init__(self, ModelPath, VelocityClass, device='cpu'):
-        
+
         # ======================= JSON Template =======================
         self.Params = {}
         self.Params['ModelPath']     = ModelPath
@@ -130,8 +130,8 @@ class Model():
             xmax_UTM = np.array(copy.copy(self.Params['VelocityClass'].xmax))
             if type(self.Params['VelocityClass'].projection) == str:
                 proj = Proj(self.Params['VelocityClass'].projection)
-                xmin_UTM[0],xmin_UTM[1] = proj(xmin_UTM[0],xmin_UTM[1]) 
-                xmax_UTM[0],xmax_UTM[1] = proj(xmax_UTM[0],xmax_UTM[1]) 
+                xmin_UTM[0],xmin_UTM[1] = proj(xmin_UTM[0],xmin_UTM[1])
+                xmax_UTM[0],xmax_UTM[1] = proj(xmax_UTM[0],xmax_UTM[1])
             indx = np.argmax(xmax_UTM-xmin_UTM)
             self.nf_max    = xmax_UTM[indx]
             self.nf_min    = xmin_UTM[indx]
@@ -153,8 +153,8 @@ class Model():
             xmax_UTM = np.array(copy.copy(self.Params['VelocityClass'].xmax))
             if type(self.Params['VelocityClass'].projection) == str:
                 proj = Proj(self.Params['VelocityClass'].projection)
-                xmin_UTM[0],xmin_UTM[1] = proj(xmin_UTM[0],xmin_UTM[1]) 
-                xmax_UTM[0],xmax_UTM[1] = proj(xmax_UTM[0],xmax_UTM[1]) 
+                xmin_UTM[0],xmin_UTM[1] = proj(xmin_UTM[0],xmin_UTM[1])
+                xmax_UTM[0],xmax_UTM[1] = proj(xmax_UTM[0],xmax_UTM[1])
             indx = np.argmax(xmax_UTM-xmin_UTM)
             self.nf_max    = xmax_UTM[indx]
             self.nf_min    = xmin_UTM[indx]
@@ -199,7 +199,7 @@ class Model():
         self.dataset.data,self.dataset.target = self._normalization(Xp=self.dataset.data,Yp=self.dataset.target)
 
 
-        # 
+        #
         len_dataset         = len(self.dataset)
         n_batches           = int(len(self.dataset)/int(self.Params['Training']['Batch Size']) + 1)
         training_start_time = time.time()
@@ -215,12 +215,12 @@ class Model():
             self.dataset,
             batch_size=int(self.Params['Training']['Batch Size'] ),
             sampler=train_sampler,
-            )    
+            )
         validation_loader  = torch.utils.data.DataLoader(
             self.dataset,
             batch_size=int(self.Params['Training']['Batch Size'] ),
             sampler=validation_sampler,
-        )    
+        )
 
 
 
@@ -258,7 +258,7 @@ class Model():
 
             for i, data in enumerate(train_loader_wei, 0):
                 #print('----------------- Epoch {} - Batch {} --------------------'.format(epoch,i))
-                
+
                 # Get inputs/outputs and wrap in variable object
                 inputs, labels, indexbatch = data
                 inputs = inputs.float()
@@ -368,9 +368,9 @@ class Model():
             Xp  = self._normalization(Xp=Xp,Yp=None)
         Xp.requires_grad_()
         tau   = self.network(Xp)
-        dtau  = torch.autograd.grad(outputs=tau, inputs=Xp, grad_outputs=torch.ones(tau.size()).to(torch.device(self.Params['Device'])), 
-                                    only_inputs=True,create_graph=True,retain_graph=True)[0]        
-        T0    = torch.sqrt(((Xp[:,3]-Xp[:,0])**2 + (Xp[:,4]-Xp[:,1])**2 + (Xp[:,5]-Xp[:,2])**2))  
+        dtau  = torch.autograd.grad(outputs=tau, inputs=Xp, grad_outputs=torch.ones(tau.size()).to(torch.device(self.Params['Device'])),
+                                    only_inputs=True,create_graph=True,retain_graph=True)[0]
+        T0    = torch.sqrt(((Xp[:,3]-Xp[:,0])**2 + (Xp[:,4]-Xp[:,1])**2 + (Xp[:,5]-Xp[:,2])**2))
         T1    = (T0**2)*(dtau[:,3]**2 + dtau[:,4]**2 + dtau[:,5]**2)
         T2    = 2*tau[:,0]*(dtau[:,3]*(Xp[:,3]-Xp[:,0]) + dtau[:,4]*(Xp[:,4]-Xp[:,1]) + dtau[:,5]*(Xp[:,5]-Xp[:,2]))
         T3    = tau[:,0]**2
@@ -380,8 +380,8 @@ class Model():
         return Ypred
 
     def StationayPoints(self,Xsrc,Xrcv,Xpoints=None,numPoints=1e4):
-        ''' 
-            Supplying a series of Source-Reciever locations. 
+        '''
+            Supplying a series of Source-Reciever locations.
 
             This function returrns a the traveltime between the two and the stationary value.
 
@@ -412,18 +412,15 @@ class Model():
         XPs  = Variable(Tensor(XPs)).to(torch.device(self.Params['Device']))
         XSs  = Variable(torch.ones((XPs.shape[0],3))*(Xsrc[None,:])).to(torch.device(self.Params['Device']))
         XRs  = Variable(torch.ones((XPs.shape[0],3))*(Xrcv[None,:])).to(torch.device(self.Params['Device']))
-        XPs  = XPs.float(); XSs = XSs.float(); XRs = XRs.float(); 
+        XPs  = XPs.float(); XSs = XSs.float(); XRs = XRs.float();
         XPs.requires_grad_()
 
         T_s2p = self.TravelTimes(torch.cat((XSs,XPs),dim=1),projection=False)
         T_r2p = self.TravelTimes(torch.cat((XRs,XPs),dim=1),projection=False)
         T_s2r = self.TravelTimes(torch.cat((XSs,XRs),dim=1)[0,:][None,:],projection=False)
 
-        dP    = torch.autograd.grad(outputs=(T_s2p+T_r2p), inputs=XPs, grad_outputs=torch.ones((T_s2p+T_r2p).size()).to(torch.device(self.Params['Device'])), 
+        dP    = torch.autograd.grad(outputs=(T_s2p+T_r2p), inputs=XPs, grad_outputs=torch.ones((T_s2p+T_r2p).size()).to(torch.device(self.Params['Device'])),
                                       only_inputs=True,create_graph=False,retain_graph=False)[0]
         dP    = torch.sum(abs(dP),dim=1)
 
         return T_s2r,torch.cat(((T_s2p+T_r2p)[:,None],dP[:,None]),dim=1).detach()
-
-
-
