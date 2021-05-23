@@ -14,6 +14,7 @@ from torch.utils.data.sampler import SubsetRandomSampler,WeightedRandomSampler
 
 from scipy import interpolate
 import pandas as pd
+import pyproj
 from pyproj import Proj
 import copy
 import os
