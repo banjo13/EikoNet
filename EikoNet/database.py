@@ -14,6 +14,7 @@ from torch.utils.data.sampler import SubsetRandomSampler,WeightedRandomSampler
 
 from scipy import interpolate
 import pandas as pd
+import pyproj
 from pyproj import Proj
 import copy
 import os
@@ -59,6 +60,37 @@ def _randPoints(numsamples=10000,randomDist=False,Xmin=[0,0,0],Xmax=[2,2,2]):
         X  = (np.random.rand(numsamples,6)*(Xmax-Xmin)[None,None,:] + Xmin[None,None,:])[0,:,:]
     return X
 
+# def make_X(file=None,numsamples=10000,randomDist=False,Xmin=[0,0,0],Xmax=[2,2,2]):
+#     df = pd.read_csv(file)
+#     df_samp = df.sample(n=numsamples)
+#     X = _randPoints(numsamples=numsamples,randomDist=True,Xmin=xmin,Xmax=xmax)
+#     rX = []
+#     rY = []
+#     rZ = []
+#     for i in range(len(X)):
+#         x = X[i]
+#         rx = x[0]
+#         ry = x[1]
+#         rz = x[2]*1000
+#         rX.append(rx)
+#         rY.append(ry)
+#         rZ.append(rz)
+#
+#     df_samp['rlat'] = rX
+#     df_samp['rlon'] = rY
+#     df_samp['rz'] = rZ
+#     dfX = df_samp[['rlat','rlon','rz','lat','lon','z']]
+#
+#     X = dfXp.to_numpy()
+#
+#     dfY = df_samp['vp']
+#
+#     Y = dfYp.to_numpy()
+#
+#     # xxx = np.save(path+'Xp.npy',Xp)
+#     # yyy = np.save(path+'Yp.npy',Yp)
+#     return X,Y
+
 
 def Database(PATH,VelocityFunction,create=False,Numsamples=5000,randomDist=False,SurfaceRecievers=False):
     if create == True:
@@ -71,13 +103,13 @@ def Database(PATH,VelocityFunction,create=False,Numsamples=5000,randomDist=False
             xmin[0],xmin[1] = proj(xmin[0],xmin[1])
             xmax[0],xmax[1] = proj(xmax[0],xmax[1])
 
-        if VelocityFunction == 'PNSN_CVM':
-            Xp = np.load(PATH+'/Xp.npy')
-            Yp = np.load(PATH+'/Yp.npy')
-
-        else:
-            Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
-            Yp   = VelocityFunction.eval(Xp)
+            # if VelocityFunction == 'PNSN_CVM':
+            #     Xp = make_X(file=PATH,numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
+            #     Yp = VelocityFunction.eval(Xp)
+            #
+            # else:
+            #     Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
+            #     Yp   = VelocityFunction.eval(Xp)
 
         Xp   = _randPoints(numsamples=Numsamples,Xmin=xmin,Xmax=xmax,randomDist=randomDist)
         Yp   = VelocityFunction.eval(Xp)
@@ -245,17 +277,62 @@ class Graded1DVelocity:
 # BNJ 4-29-2021 TODO: WRITE A CLASS TO READ THE PNSN_CVM
 # THE FORMAT WILL BE: a .csvfile, with utme utmn z vp vs
 class PNSN_CVM:
-    def __init__(self,xmin=None,xmax=None,projection=None,phase='VP'):
+    def __init__(self,xmin=None,xmax=None,projection=None,phase='VP',path=None,file=None):
         self.file         = file
+        self.path         = path
         self.xmin         = xmin
         self.xmax         = xmax
         self.projection   = projection
         self.phase        = phase
 
-
-
     def eval(self,Xp):
-        Yp = np.load(Yp)
+        df = pd.read_csv(self.path+"/"+self.file)
+        df['z'] = df['z']/1000
+        velocity = []
+        # Yp = np.zeros((Xp.shape[0],2))
+        Yp = []
+        for i in range(len(Xp)):
+            t = Xp[i]
+
+            # print("Xp [i]: ",t)
+            x_dep = t[5]
+            sub = df.iloc[(df['z']-x_dep).abs().argsort()[:2]]
+            # print('subset_z:',sub)
+            sub_z = np.unique(sub['z'].values)
+            # print("sub_z",sub_z)
+            zdf = df.iloc[(df['z'].values) == sub_z]
+            # print('zdf: ',zdf)
+
+            # proj = Proj(self.projection)
+            # t1 = proj(t[3],t[4])
+            # print("t1: ",t1)
+
+            x_utme = t[3]
+            x_utmn = t[4]
+            # print("Xp utme :",x_utme)
+            # print("Xp utmn :", x_utmn)
+
+            sub = df.iloc[(df['utmn']-x_utmn).abs().argsort()[:2]]
+            # print('subset_n:',sub)
+            sub_n = np.unique(sub['utmn'].values)
+            # print("sub_n",sub_n)
+
+            sub = df.iloc[(df['utme']-x_utme).abs().argsort()[:2]]
+            # print('subset_e:',sub)
+            sub_e = np.unique(sub['utme'].values)
+            # print("sub_e",sub_e)
+
+            row = zdf.loc[(zdf['utme'].values == sub_e) & (zdf['utmn'].values == sub_n)]
+            if self.phase == 'VP':
+                vp = row['vp'].values[0]
+                velocity.append(vp)
+            if self.phase == 'VS':
+                vp = row['vs'].values[0]
+                velocity.append(vp)
+            vp = row['vp'].values[0]
+            Yp.append([0,vp])
+        # Yp[:,1] = velocity
+        Yp = np.asarray(Yp)
 
 
 #         if self.phase == 'VP':
@@ -264,11 +341,11 @@ class PNSN_CVM:
 #             Yp[:,1] = VPVS['VS']
 
 #         # Removing unknown velocities
-        Yp[Yp[:,1]==-99999.0000] = np.nan
-        Yp[Yp[:,1]==0.0] = np.nan
+        # Yp[Yp[:,1]==-99999.0000] = np.nan
+        # Yp[Yp[:,1]==0.0] = np.nan
 
 #         # Velocity in km/s
-#         Yp = Yp/1000
+        Yp = Yp/1000
 
         return Yp
 
@@ -402,8 +479,6 @@ class SCEC_CVMH:
                             names=['Long','Lat','Z','UTM_X','UTM_Y','UTM_elv_X','UTM_elv_Y',
                                    'topo','mtop','base','moho','flg','cellX','cellY','cellZ',
                                    'tag','VP','VS','RHO'],sep=r'\s+')
-
-        VPVS = pd.read_csv('cascadia_vpvs')
 
         if self.phase == 'VP':
             Yp[:,1] = VPVS['VP']
