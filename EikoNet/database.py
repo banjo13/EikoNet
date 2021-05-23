@@ -277,7 +277,7 @@ class Graded1DVelocity:
 # BNJ 4-29-2021 TODO: WRITE A CLASS TO READ THE PNSN_CVM
 # THE FORMAT WILL BE: a .csvfile, with utme utmn z vp vs
 class PNSN_CVM:
-    def __init__(self,xmin=None,xmax=None,projection=None,phase='VP',path=None,file=None):
+    def __init__(self,path,file,xmin=None,xmax=None,projection=None,phase='VP'):
         self.file         = file
         self.path         = path
         self.xmin         = xmin
